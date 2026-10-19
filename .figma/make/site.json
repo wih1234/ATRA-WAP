@@ -1,0 +1,11 @@
+{
+  "title": "ATRA",
+  "description": "A Persian-language CRM and smart assistant web app designed for Iranian businesses to manage sales, customers, tasks, and orders efficiently with a modern, responsive interface.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
