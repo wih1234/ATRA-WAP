@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   demoCustomers,
   demoOrders,
@@ -10,8 +10,23 @@ import {
   type CustomerType,
   type OrderStatus,
 } from "./crm-data";
+import { useHashRoute, type RouteName } from "./router";
 
 type Page = "داشبورد" | "مشتریان" | "پرونده مشتری" | "وظایف و تقویم" | "سفارش‌ها" | "دستیار هوشمند";
+
+const routeNameToPage: Record<RouteName, Page> = {
+  dashboard: "داشبورد",
+  customers: "مشتریان",
+  customer: "پرونده مشتری",
+  orders: "سفارش‌ها",
+  tasks: "وظایف و تقویم",
+  assistant: "دستیار هوشمند",
+};
+
+function navigateRoute(prev: Route, next: RouteName, customerId?: string): Route {
+  if (next === "customer") return { name: "customer", customerId: customerId ?? prev.customerId };
+  return { name: next };
+}
 
 type IconName =
   | "grid"
@@ -112,7 +127,7 @@ function Header({ page, onQuickAdd }: { page: Page; onQuickAdd: () => void }) {
   );
 }
 
-function Sidebar({ page, setPage, openTasks }: { page: Page; setPage: (page: Page) => void; openTasks: number }) {
+function Sidebar({ page, navigate, openTasks }: { page: Page; navigate: (next: RouteName, customerId?: string) => void; openTasks: number }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -121,13 +136,15 @@ function Sidebar({ page, setPage, openTasks }: { page: Page; setPage: (page: Pag
       </div>
       <nav>
         <p className="nav-heading">فضای کاری</p>
-        {navItems.map((item) => (
-          <button key={item.label} onClick={() => item.label !== "مسیر فروش" && setPage(item.label as Page)} className={`nav-item ${page === item.label || (page === "پرونده مشتری" && item.label === "مشتریان") ? "active" : ""}`}>
+        {navItems.map((item) => {
+          const target = navLabelToRoute(item.label);
+          return (
+          <button key={item.label} onClick={() => target && navigate(target)} className={`nav-item ${page === item.label || (page === "پرونده مشتری" && item.label === "مشتریان") ? "active" : ""}`}>
             <Icon name={item.icon} size={20}/><span>{item.label}</span>
             {item.label === "وظایف و تقویم" && <b>{openTasks}</b>}
             {item.label === "دستیار هوشمند" && <i>جدید</i>}
           </button>
-        ))}
+        );})}
         <div className="nav-separator"/>
         <button className="nav-item"><Icon name="settings" size={20}/><span>تنظیمات و دسترسی</span></button>
       </nav>
@@ -135,7 +152,7 @@ function Sidebar({ page, setPage, openTasks }: { page: Page; setPage: (page: Pag
         <div className="assistant-icon"><Icon name="spark" size={20}/></div>
         <strong>دستیار آتا</strong>
         <p>برای امروز چه برنامه‌ای دارم؟</p>
-        <button onClick={() => setPage("دستیار هوشمند")}>شروع گفت‌وگو <Icon name="arrow" size={15}/></button>
+        <button onClick={() => navigate("assistant")}>شروع گفت‌وگو <Icon name="arrow" size={15}/></button>
       </div>
       <div className="profile">
         <div className="avatar">اب</div>
@@ -208,7 +225,7 @@ function TodayTasks() {
   );
 }
 
-function Dashboard({ setPage, openQuickAdd }: { setPage: (page: Page) => void; openQuickAdd: () => void }) {
+function Dashboard({ navigate, openQuickAdd }: { navigate: (next: RouteName, customerId?: string) => void; openQuickAdd: () => void }) {
   return (
     <>
       <Header page="داشبورد" onQuickAdd={openQuickAdd}/>
@@ -216,7 +233,7 @@ function Dashboard({ setPage, openQuickAdd }: { setPage: (page: Page) => void; o
         <div className="insight-banner">
           <div className="insight-icon"><Icon name="spark" size={22}/></div>
           <div><strong>پیشنهاد دستیار آتا</strong><p>سه مشتری با احتمال خرید بالا، بیش از ۵ روز است که پیگیری نشده‌اند.</p></div>
-          <button onClick={() => setPage("دستیار هوشمند")}>مشاهده پیشنهادها <Icon name="arrow" size={16}/></button>
+          <button onClick={() => navigate("assistant")}>مشاهده پیشنهادها <Icon name="arrow" size={16}/></button>
           <button className="close-button">×</button>
         </div>
         <section className="stats-grid">
@@ -227,7 +244,7 @@ function Dashboard({ setPage, openQuickAdd }: { setPage: (page: Page) => void; o
         </section>
         <div className="dashboard-grid"><SalesChart/><TodayTasks/></div>
         <section className="panel customers-panel">
-          <div className="panel-head"><div><h2>مشتریان نیازمند توجه</h2><p>بر اساس اولویت و زمان آخرین تعامل</p></div><button className="link-button" onClick={() => setPage("مشتریان")}>مشاهده همه مشتریان <Icon name="arrow" size={15}/></button></div>
+          <div className="panel-head"><div><h2>مشتریان نیازمند توجه</h2><p>بر اساس اولویت و زمان آخرین تعامل</p></div><button className="link-button" onClick={() => navigate("customers")}>مشاهده همه مشتریان <Icon name="arrow" size={15}/></button></div>
           <div className="customer-table">
             <div className="table-head"><span>مشتری</span><span>آخرین تعامل</span><span>فرصت فروش</span><span>مسئول پیگیری</span><span>وضعیت</span><span/></div>
             {[
@@ -544,25 +561,39 @@ function AssistantPage({ tasks, orders }: { tasks: CrmTask[]; orders: BatteryOrd
   </>;
 }
 
-function MobileNav({ page, setPage, onQuickAdd }: { page: Page; setPage: (page: Page) => void; onQuickAdd: () => void }) {
+function MobileNav({ page, navigate, onQuickAdd }: { page: Page; navigate: (next: RouteName, customerId?: string) => void; onQuickAdd: () => void }) {
   return <nav className="mobile-nav">
-    <button className={page === "داشبورد" ? "active" : ""} onClick={() => setPage("داشبورد")}><Icon name="grid" size={21}/><span>خانه</span></button>
-    <button className={page === "مشتریان" || page === "پرونده مشتری" ? "active" : ""} onClick={() => setPage("مشتریان")}><Icon name="users" size={21}/><span>مشتریان</span></button>
-    <button className={page === "سفارش‌ها" ? "active" : ""} onClick={() => setPage("سفارش‌ها")}><Icon name="box" size={21}/><span>سفارش‌ها</span></button>
+    <button className={page === "داشبورد" ? "active" : ""} onClick={() => navigate("dashboard")}><Icon name="grid" size={21}/><span>خانه</span></button>
+    <button className={page === "مشتریان" || page === "پرونده مشتری" ? "active" : ""} onClick={() => navigate("customers")}><Icon name="users" size={21}/><span>مشتریان</span></button>
+    <button className={page === "سفارش‌ها" ? "active" : ""} onClick={() => navigate("orders")}><Icon name="box" size={21}/><span>سفارش‌ها</span></button>
     <button className="mobile-add" aria-label="ثبت سریع" onClick={onQuickAdd}><Icon name="plus" size={25}/></button>
-    <button className={page === "وظایف و تقویم" ? "active" : ""} onClick={() => setPage("وظایف و تقویم")}><Icon name="check" size={21}/><span>وظایف</span></button>
-    <button className={page === "دستیار هوشمند" ? "active" : ""} onClick={() => setPage("دستیار هوشمند")}><Icon name="spark" size={21}/><span>دستیار</span></button>
+    <button className={page === "وظایف و تقویم" ? "active" : ""} onClick={() => navigate("tasks")}><Icon name="check" size={21}/><span>وظایف</span></button>
+    <button className={page === "دستیار هوشمند" ? "active" : ""} onClick={() => navigate("assistant")}><Icon name="spark" size={21}/><span>دستیار</span></button>
   </nav>;
 }
 
+function navLabelToRoute(label: string): RouteName | null {
+  if (label === "داشبورد") return "dashboard";
+  if (label === "مشتریان") return "customers";
+  if (label === "وظایف و تقویم") return "tasks";
+  if (label === "سفارش‌ها") return "orders";
+  if (label === "دستیار هوشمند") return "assistant";
+  return null;
+}
+
 export default function App() {
-  const [page, setPage] = useState<Page>("داشبورد");
+  const { route, navigate: navigateRaw } = useHashRoute();
+  const page = routeNameToPage[route.name];
   const [customers, setCustomers] = usePersistentState("ata-demo-customers", demoCustomers);
   const [orders, setOrders] = usePersistentState("ata-demo-orders", demoOrders);
   const [tasks, setTasks] = usePersistentState("ata-demo-tasks", demoTasks);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(demoCustomers[0].id);
   const [modal, setModal] = useState<"customer" | "edit-customer" | "order" | "task" | null>(null);
-  const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0];
+  const selectedCustomerId = route.name === "customer" ? route.customerId : undefined;
+  const selectedCustomer = selectedCustomerId ? customers.find((customer) => customer.id === selectedCustomerId) ?? customers[0] : customers[0];
+
+  const navigate = useCallback((next: RouteName, customerId?: string) => {
+    navigateRaw(navigateRoute(route, next, customerId));
+  }, [navigateRaw, route]);
 
   function quickAdd() {
     if (page === "سفارش‌ها") setModal("order");
@@ -571,23 +602,23 @@ export default function App() {
   }
 
   function renderPage() {
-    if (page === "مشتریان") return <CustomersPage customers={customers} onCreate={() => setModal("customer")} onOpen={(customer) => { setSelectedCustomerId(customer.id); setPage("پرونده مشتری"); }}/>;
-    if (page === "پرونده مشتری" && selectedCustomer) return <CustomerProfile customer={selectedCustomer} orders={orders.filter((order) => order.customerId === selectedCustomer.id)} onBack={() => setPage("مشتریان")} onEdit={() => setModal("edit-customer")}/>;
+    if (page === "مشتریان") return <CustomersPage customers={customers} onCreate={() => setModal("customer")} onOpen={(customer) => navigate("customer", customer.id)}/>;
+    if (page === "پرونده مشتری" && selectedCustomer) return <CustomerProfile customer={selectedCustomer} orders={orders.filter((order) => order.customerId === selectedCustomer.id)} onBack={() => navigate("customers")} onEdit={() => setModal("edit-customer")}/>;
     if (page === "سفارش‌ها") return <OrdersPage orders={orders} customers={customers} onCreate={() => setModal("order")} onStatusChange={(id, status) => setOrders((current) => current.map((order) => order.id === id ? { ...order, status } : order))}/>;
     if (page === "وظایف و تقویم") return <TasksPage tasks={tasks} onCreate={() => setModal("task")} onToggle={(id) => setTasks((current) => current.map((task) => task.id === id ? { ...task, completed: !task.completed } : task))}/>;
     if (page === "دستیار هوشمند") return <AssistantPage tasks={tasks} orders={orders}/>;
-    return <Dashboard setPage={setPage} openQuickAdd={quickAdd}/>;
+    return <Dashboard navigate={navigate} openQuickAdd={quickAdd}/>;
   }
 
   return (
     <div className="app" dir="rtl">
-      <Sidebar page={page} setPage={setPage} openTasks={tasks.filter((task) => !task.completed).length}/>
+      <Sidebar page={page} navigate={navigate} openTasks={tasks.filter((task) => !task.completed).length}/>
       <div className="workspace">{renderPage()}</div>
-      <MobileNav page={page} setPage={setPage} onQuickAdd={quickAdd}/>
-      {modal === "customer" && <CustomerForm onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => [customer, ...current]); setModal(null); setSelectedCustomerId(customer.id); setPage("پرونده مشتری"); }}/>}
+      <MobileNav page={page} navigate={navigate} onQuickAdd={quickAdd}/>
+      {modal === "customer" && <CustomerForm onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => [customer, ...current]); setModal(null); navigate("customer", customer.id); }}/>}
       {modal === "edit-customer" && selectedCustomer && <CustomerForm customer={selectedCustomer} onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => current.map((item) => item.id === customer.id ? customer : item)); setModal(null); }}/>}
-      {modal === "order" && <OrderForm customers={customers} onClose={() => setModal(null)} onSave={(order) => { setOrders((current) => [order, ...current]); setModal(null); setPage("سفارش‌ها"); }}/>}
-      {modal === "task" && <TaskForm customers={customers} onClose={() => setModal(null)} onSave={(task) => { setTasks((current) => [task, ...current]); setModal(null); setPage("وظایف و تقویم"); }}/>}
+      {modal === "order" && <OrderForm customers={customers} onClose={() => setModal(null)} onSave={(order) => { setOrders((current) => [order, ...current]); setModal(null); navigate("orders"); }}/>}
+      {modal === "task" && <TaskForm customers={customers} onClose={() => setModal(null)} onSave={(task) => { setTasks((current) => [task, ...current]); setModal(null); navigate("tasks"); }}/>}
     </div>
   );
 }
