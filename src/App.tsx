@@ -11,6 +11,7 @@ import {
   type OrderStatus,
 } from "./crm-data";
 import { useHashRoute, type RouteName } from "./router";
+import { type CustomerFormErrors, type CustomerFormValues, type DuplicateMatch, findDuplicateCustomer, normalizeFormValues, validateCustomerForm } from "./customer-validation";
 
 type Page = "داشبورد" | "مشتریان" | "پرونده مشتری" | "وظایف و تقویم" | "سفارش‌ها" | "دستیار هوشمند";
 
@@ -134,7 +135,7 @@ function Sidebar({ page, navigate, openTasks }: { page: Page; navigate: (next: R
         <div className="brand-mark">آ</div>
         <div><strong>آتا</strong><span>سامانه مدیریت ارتباط</span></div>
       </div>
-      <nav>
+      <nav aria-label="ناوبری کناری">
         <p className="nav-heading">فضای کاری</p>
         {navItems.map((item) => {
           const target = navLabelToRoute(item.label);
@@ -345,33 +346,59 @@ function Modal({ title, description, onClose, children }: { title: string; descr
   </div>;
 }
 
-function CustomerForm({ customer, onSave, onClose }: { customer?: Customer; onSave: (customer: Customer) => void; onClose: () => void }) {
+function CustomerForm({ customer, customers, onSave, onClose }: { customer?: Customer; customers: Customer[]; onSave: (customer: Customer) => void; onClose: () => void }) {
+  const [errors, setErrors] = useState<CustomerFormErrors>({});
+  const [duplicate, setDuplicate] = useState<DuplicateMatch | null>(null);
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const raw: CustomerFormValues = {
+      name: String(form.get("name") ?? ""),
+      contactName: String(form.get("contactName") ?? ""),
+      phone: String(form.get("phone") ?? ""),
+      email: String(form.get("email") ?? ""),
+      industry: String(form.get("industry") ?? ""),
+      location: String(form.get("location") ?? ""),
+    };
+    const fieldErrors = validateCustomerForm(raw);
+    setErrors(fieldErrors);
+    if (Object.keys(fieldErrors).length > 0) return;
+
+    const match = findDuplicateCustomer(raw, customers, customer?.id);
+    if (match) {
+      setDuplicate(match);
+      return;
+    }
+    setDuplicate(null);
+    const normalized = normalizeFormValues(raw);
     onSave({
       id: customer?.id ?? `cus-${Date.now()}`,
-      name: String(form.get("name")),
-      contactName: String(form.get("contactName")),
-      phone: String(form.get("phone")),
-      email: String(form.get("email")),
+      name: normalized.name,
+      contactName: normalized.contactName,
+      phone: normalized.phone,
+      email: normalized.email,
       type: String(form.get("type")) as CustomerType,
-      industry: String(form.get("industry")),
-      location: String(form.get("location")),
+      industry: normalized.industry,
+      location: normalized.location,
       owner: String(form.get("owner")),
       status: customer?.status ?? "فعال",
       lastInteraction: customer?.lastInteraction ?? "هنوز ثبت نشده",
     });
   }
+
+  const fieldError = (name: keyof CustomerFormValues) => errors[name];
+
   return <Modal title={customer ? "ویرایش مشتری" : "ثبت مشتری جدید"} description="اطلاعات این فرم کاملاً ساختگی و مخصوص نسخه نمایشی است." onClose={onClose}>
     <form className="crm-form" onSubmit={submit}>
-      <label><span>نام مشتری یا شرکت</span><input name="name" required defaultValue={customer?.name} placeholder="مثلاً شرکت نمونه ایرانیان"/></label>
-      <label><span>نام رابط اصلی</span><input name="contactName" required defaultValue={customer?.contactName} placeholder="نام و نام خانوادگی"/></label>
+      {duplicate && <p className="form-banner" role="alert">مشتری مشابه با نام «{duplicate.existing.name}» از قبل ثبت شده است. لطفاً نام، شماره تماس یا ایمیل را بررسی کنید تا از ثبت تکراری جلوگیری شود.</p>}
+      <label><span>نام مشتری یا شرکت</span><input name="name" required defaultValue={customer?.name} placeholder="مثلاً شرکت نمونه ایرانیان" className={fieldError("name") ? "has-error" : undefined}/>{fieldError("name") && <span className="field-error">{fieldError("name")}</span>}</label>
+      <label><span>نام رابط اصلی</span><input name="contactName" required defaultValue={customer?.contactName} placeholder="نام و نام خانوادگی" className={fieldError("contactName") ? "has-error" : undefined}/>{fieldError("contactName") && <span className="field-error">{fieldError("contactName")}</span>}</label>
       <label><span>نوع مشتری</span><select name="type" defaultValue={customer?.type ?? "حقوقی"}><option>حقوقی</option><option>حقیقی</option><option>نماینده</option></select></label>
-      <label><span>حوزه فعالیت</span><input name="industry" required defaultValue={customer?.industry} placeholder="تجهیزات صنعتی"/></label>
-      <label><span>شماره تماس</span><input name="phone" required defaultValue={customer?.phone} placeholder="۰۹۱۲ ۰۰۰ ۰۰۰۰"/></label>
-      <label><span>ایمیل نمایشی</span><input name="email" type="email" required defaultValue={customer?.email} placeholder="name@example.ir" dir="ltr"/></label>
-      <label className="form-wide"><span>نشانی</span><input name="location" required defaultValue={customer?.location} placeholder="استان، شهر، نشانی کوتاه"/></label>
+      <label><span>حوزه فعالیت</span><input name="industry" required defaultValue={customer?.industry} placeholder="تجهیزات صنعتی" className={fieldError("industry") ? "has-error" : undefined}/>{fieldError("industry") && <span className="field-error">{fieldError("industry")}</span>}</label>
+      <label><span>شماره تماس</span><input name="phone" required defaultValue={customer?.phone} placeholder="۰۹۱۲ ۰۰۰ ۰۰۰۰" className={fieldError("phone") ? "has-error" : undefined}/>{fieldError("phone") && <span className="field-error">{fieldError("phone")}</span>}</label>
+      <label><span>ایمیل نمایشی</span><input name="email" type="email" required defaultValue={customer?.email} placeholder="name@example.ir" dir="ltr" className={fieldError("email") ? "has-error" : undefined}/>{fieldError("email") && <span className="field-error">{fieldError("email")}</span>}</label>
+      <label className="form-wide"><span>نشانی</span><input name="location" required defaultValue={customer?.location} placeholder="استان، شهر، نشانی کوتاه" className={fieldError("location") ? "has-error" : undefined}/>{fieldError("location") && <span className="field-error">{fieldError("location")}</span>}</label>
       <label className="form-wide"><span>مسئول پیگیری</span><select name="owner" defaultValue={customer?.owner ?? "احسان باقری"}><option>احسان باقری</option><option>سارا احمدی</option><option>علی رضایی</option></select></label>
       <div className="form-actions"><button type="button" className="outline-button" onClick={onClose}>انصراف</button><button className="primary-button" type="submit"><Icon name="check" size={17}/>{customer ? "ذخیره تغییرات" : "ثبت مشتری"}</button></div>
     </form>
@@ -562,7 +589,7 @@ function AssistantPage({ tasks, orders }: { tasks: CrmTask[]; orders: BatteryOrd
 }
 
 function MobileNav({ page, navigate, onQuickAdd }: { page: Page; navigate: (next: RouteName, customerId?: string) => void; onQuickAdd: () => void }) {
-  return <nav className="mobile-nav">
+  return <nav className="mobile-nav" aria-label="ناوبری پایین">
     <button className={page === "داشبورد" ? "active" : ""} onClick={() => navigate("dashboard")}><Icon name="grid" size={21}/><span>خانه</span></button>
     <button className={page === "مشتریان" || page === "پرونده مشتری" ? "active" : ""} onClick={() => navigate("customers")}><Icon name="users" size={21}/><span>مشتریان</span></button>
     <button className={page === "سفارش‌ها" ? "active" : ""} onClick={() => navigate("orders")}><Icon name="box" size={21}/><span>سفارش‌ها</span></button>
@@ -615,8 +642,8 @@ export default function App() {
       <Sidebar page={page} navigate={navigate} openTasks={tasks.filter((task) => !task.completed).length}/>
       <div className="workspace">{renderPage()}</div>
       <MobileNav page={page} navigate={navigate} onQuickAdd={quickAdd}/>
-      {modal === "customer" && <CustomerForm onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => [customer, ...current]); setModal(null); navigate("customer", customer.id); }}/>}
-      {modal === "edit-customer" && selectedCustomer && <CustomerForm customer={selectedCustomer} onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => current.map((item) => item.id === customer.id ? customer : item)); setModal(null); }}/>}
+      {modal === "customer" && <CustomerForm customers={customers} onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => [customer, ...current]); setModal(null); navigate("customer", customer.id); }}/>}
+      {modal === "edit-customer" && selectedCustomer && <CustomerForm customer={selectedCustomer} customers={customers} onClose={() => setModal(null)} onSave={(customer) => { setCustomers((current) => current.map((item) => item.id === customer.id ? customer : item)); setModal(null); }}/>}
       {modal === "order" && <OrderForm customers={customers} onClose={() => setModal(null)} onSave={(order) => { setOrders((current) => [order, ...current]); setModal(null); navigate("orders"); }}/>}
       {modal === "task" && <TaskForm customers={customers} onClose={() => setModal(null)} onSave={(task) => { setTasks((current) => [task, ...current]); setModal(null); navigate("tasks"); }}/>}
     </div>

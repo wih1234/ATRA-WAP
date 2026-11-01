@@ -59,6 +59,7 @@ export function useHashRoute(): { route: Route; navigate: (route: Route) => void
     const target = toHash(next);
     if (window.location.hash !== target) {
       window.location.hash = target;
+      setRoute(next);
     } else {
       setRoute(next);
     }
